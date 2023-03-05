@@ -38,7 +38,7 @@ def snnl(x, y, t, metric='euclidean'):
 
 
 class EWE_Resnet:
-    def __init__(self, image, label, w_label, bs, num_class, lr, factors, temperatures, target, is_training, metric,
+    def __init__(self, image, label, w_label, bs, num_class, lr, factors, temperatures, targets, is_training, metric,
                  layers):
         self.num_class = num_class
         self.batch_size = bs
@@ -46,7 +46,7 @@ class EWE_Resnet:
         self.b1 = 0.9
         self.b2 = 0.99
         self.epsilon = 1e-5
-        self.target = target
+        self.targets = targets
         self.w = w_label
         self.x = image
         self.Y = label
@@ -183,7 +183,7 @@ class EWE_Resnet:
         return tf.gradients(self.snnl_loss[0] + self.snnl_loss[1] + self.snnl_loss[2], self.x)
 
     def ce_gradient(self):
-        return tf.gradients(tf.unstack(self.prediction[-1], axis=1)[self.target], self.x)
+        return tf.gradients(tf.stack(list(tf.unstack(self.prediction[-1], axis=1)[target] for target in self.targets)), self.x)
 
 
 class Plain_Resnet:
@@ -298,14 +298,14 @@ class Plain_Resnet:
 
 
 class EWE_2_conv:
-    def __init__(self, image, label, w_label, bs, num_class, lr, factors, temperatures, target, is_training, metric):
+    def __init__(self, image, label, w_label, bs, num_class, lr, factors, temperatures, targets, is_training, metric):
         self.num_class = num_class
         self.batch_size = bs
         self.lr = lr
         self.b1 = 0.9
         self.b2 = 0.99
         self.epsilon = 1e-5
-        self.target = target
+        self.targets = targets
         self.x = image
         self.Y = label
         self.w = w_label
@@ -382,7 +382,7 @@ class EWE_2_conv:
         return tf.gradients(self.snnl_loss[0] + self.snnl_loss[1] + self.snnl_loss[2], self.x)
 
     def ce_gradient(self):
-        return tf.gradients(tf.unstack(self.prediction[-1], axis=1)[self.target], self.x)
+        return tf.gradients(tf.stack(list(tf.unstack(self.prediction[-1], axis=1)[target] for target in self.targets)), self.x)
 
 
 class Plain_2_conv:
@@ -429,14 +429,14 @@ class Plain_2_conv:
 
 
 class EWE_LSTM:
-    def __init__(self, image, label, w_label, bs, num_class, lr, factors, temperatures, target, is_training, metric):
+    def __init__(self, image, label, w_label, bs, num_class, lr, factors, temperatures, targets, is_training, metric):
         self.num_class = num_class
         self.batch_size = bs
         self.lr = lr
         self.b1 = 0.9
         self.b2 = 0.99
         self.epsilon = 1e-5
-        self.target = target
+        self.targets = targets
         self.x = image
         self.Y = label
         self.w = w_label
@@ -500,7 +500,7 @@ class EWE_LSTM:
         return tf.gradients(self.snnl_loss[0] + self.snnl_loss[1] + self.snnl_loss[2], self.x)
 
     def ce_gradient(self):
-        return tf.gradients(tf.unstack(self.prediction[-1], axis=1)[self.target], self.x)
+        return tf.gradients(tf.stack(list(tf.unstack(self.prediction[-1], axis=1)[target] for target in self.targets)), self.x)
 
 
 class Plain_LSTM:

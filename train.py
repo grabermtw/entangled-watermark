@@ -34,7 +34,7 @@ def augment_test(image):
 
 
 def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_epochs, lr, n_w_ratio, factors,
-          temperatures, watermark_source, watermark_target, batch_size, w_lr, threshold, maxiter, shuffle, temp_lr,
+          temperatures, watermark_sources, watermark_targets, batch_size, w_lr, threshold, maxiter, shuffle, temp_lr,
           dataset, distribution, verbose):
     tf.random.set_random_seed(seed)
 
@@ -47,53 +47,64 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
     num_class = len(np.unique(y_train))
     half_batch_size = int(batch_size / 2)
 
-    target_data = x_train[y_train == watermark_target]
+    target_datas = []
+    for watermark_target in watermark_targets:
+        target_datas.append(x_train[y_train == watermark_target])
 
     # define the dataset and class to sample watermarked data
-    if distribution == "in":
-        source_data = x_train[y_train == watermark_source]
-    elif distribution == "out":
-        if dataset == "mnist":
-            w_dataset = "fashion"
-            with open(os.path.join("data", f"{w_dataset}.pkl"), 'rb') as f:
-                w_data = pickle.load(f)
-            x_w, y_w = w_data["training_images"], w_data["training_labels"]
-        elif dataset == "fashion":
-            w_dataset = "mnist"
-            with open(os.path.join("data", f"{w_dataset}.pkl"), 'rb') as f:
-                w_data = pickle.load(f)
-            x_w, y_w = w_data["training_images"], w_data["training_labels"]
-        elif "cifar" in dataset:
-            import scipy.io as sio
-            w_dataset = sio.loadmat(os.path.join("data", "train_32x32"))
-            x_w, y_w = np.moveaxis(w_dataset['X'], -1, 0), np.squeeze(w_dataset['y'] - 1)
-        elif dataset == "speechcmd":
-            x_w = np.swapaxes(np.load(os.path.join(r"data", "sd_GSCmdV2", 'trigger.npy')), 1, 2)
-            y_w = np.ones(x_w.shape[0]) * watermark_source
-        else:
-            raise NotImplementedError()
+    source_datas = []
+    for watermark_source in watermark_sources:
+        if distribution == "in":
+            source_datas.append(x_train[y_train == watermark_source])
+        elif distribution == "out":
+            if dataset == "mnist":
+                w_dataset = "fashion"
+                with open(os.path.join("data", f"{w_dataset}.pkl"), 'rb') as f:
+                    w_data = pickle.load(f)
+                x_w, y_w = w_data["training_images"], w_data["training_labels"]
+            elif dataset == "fashion":
+                w_dataset = "mnist"
+                with open(os.path.join("data", f"{w_dataset}.pkl"), 'rb') as f:
+                    w_data = pickle.load(f)
+                x_w, y_w = w_data["training_images"], w_data["training_labels"]
+            elif "cifar" in dataset:
+                import scipy.io as sio
+                w_dataset = sio.loadmat(os.path.join("data", "train_32x32"))
+                x_w, y_w = np.moveaxis(w_dataset['X'], -1, 0), np.squeeze(w_dataset['y'] - 1)
+            elif dataset == "speechcmd":
+                x_w = np.swapaxes(np.load(os.path.join(r"data", "sd_GSCmdV2", 'trigger.npy')), 1, 2)
+                y_w = np.ones(x_w.shape[0]) * watermark_source
+            else:
+                raise NotImplementedError()
 
-        x_w = np.reshape(x_w / 255, [-1, height, width, channels])
-        source_data = x_w[y_w == watermark_source]
-    else:
-        raise NotImplementedError("Distribution could only be either \'in\' or \'out\'.")
+            x_w = np.reshape(x_w / 255, [-1, height, width, channels])
+            source_datas.append(x_w[y_w == watermark_source])
+        else:
+            raise NotImplementedError("Distribution could only be either \'in\' or \'out\'.")
 
     # make sure watermarked data is the same size as target data
-    trigger = np.concatenate([source_data] * (target_data.shape[0] // source_data.shape[0] + 1), 0)[
-                  :target_data.shape[0]]
+    triggers = []
+    for source_data in source_datas:
+        for target_data in target_datas:
+            triggers.append(np.concatenate([source_data] * (target_data.shape[0] // source_data.shape[0] + 1), 0)[
+                          :target_data.shape[0]])
 
     w_label = np.concatenate([np.ones(half_batch_size), np.zeros(half_batch_size)], 0)
     y_train = tf.keras.utils.to_categorical(y_train, num_class)
     y_test = tf.keras.utils.to_categorical(y_test, num_class)
     index = np.arange(y_train.shape[0])
     w_0 = np.zeros([batch_size])
-    trigger_label = np.zeros([batch_size, num_class])
-    trigger_label[:, watermark_target] = 1
+    trigger_labels = []
+    for watermark_source in watermark_sources:
+        for watermark_target in watermark_targets:
+            trigger_labels.append(np.zeros([batch_size, num_class]))
+            trigger_labels[-1][:, watermark_target] = 1
 
     num_batch = x_train.shape[0] // batch_size
     w_num_batch = target_data.shape[0] // batch_size * 2
     num_test = x_test.shape[0] // batch_size
 
+    # Maybe need to modify this part for m-to-n???
     def validate_watermark(model_name, trigger_set, label):
         labels = np.zeros([batch_size, num_class])
         labels[:, label] = 1
@@ -118,9 +129,9 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
         augmented_x = tf.cond(tf.greater(is_augment, 0),
                               lambda: augment_train(x),
                               lambda: augment_test(x))
-        model = ewe_model(augmented_x, y, w, batch_size, num_class, lr, factors, t, watermark_target, is_training)
+        model = ewe_model(augmented_x, y, w, batch_size, num_class, lr, factors, t, watermark_targets, is_training)
     else:
-        model = ewe_model(x, y, w, batch_size, num_class, lr, factors, t, watermark_target, is_training)
+        model = ewe_model(x, y, w, batch_size, num_class, lr, factors, t, watermark_targets, is_training)
 
     sess = tf.Session()
     sess.run(tf.global_variables_initializer())
@@ -136,47 +147,49 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
                                       t: temperatures,
                                       w: w_0, is_training: 1, is_augment: 1})
 
-    if distribution == "in":
-        trigger_grad = []
+    for i in range(len(source_datas)):
+        for j, target_data in enumerate(target_datas):
+            if distribution == "in":
+                trigger_grad = []
+                for batch in range(w_num_batch):
+                    batch_data = np.concatenate([triggers[i * j][batch * half_batch_size: (batch + 1) * half_batch_size],
+                                                target_data[batch * half_batch_size: (batch + 1) * half_batch_size]], 0)
+                    grad = sess.run(model.snnl_trigger, {x: batch_data, w: w_label, t: temperatures, is_training: 0,
+                                                        is_augment: 0})[0][:half_batch_size]
+                    trigger_grad.append(grad)
+                avg_grad = np.average(np.concatenate(trigger_grad), 0)
+                down_sample = np.array([[np.sum(avg_grad[i: i + 3, k: k + 3]) for i in range(height - 2)] for k in range(width - 2)])
+                w_pos = np.unravel_index(down_sample.argmin(), down_sample.shape)
+                triggers[i * j][:, w_pos[0]:w_pos[0] + 3, w_pos[1]:w_pos[1] + 3, 0] = 1
+            else:
+                w_pos = [-1, -1]
+
+        step_list = np.zeros([w_num_batch])
+        snnl_change = []
         for batch in range(w_num_batch):
-            batch_data = np.concatenate([trigger[batch * half_batch_size: (batch + 1) * half_batch_size],
-                                         target_data[batch * half_batch_size: (batch + 1) * half_batch_size]], 0)
-            grad = sess.run(model.snnl_trigger, {x: batch_data, w: w_label, t: temperatures, is_training: 0,
-                                                 is_augment: 0})[0][:half_batch_size]
-            trigger_grad.append(grad)
-        avg_grad = np.average(np.concatenate(trigger_grad), 0)
-        down_sample = np.array([[np.sum(avg_grad[i: i + 3, j: j + 3]) for i in range(height - 2)] for j in range(width - 2)])
-        w_pos = np.unravel_index(down_sample.argmin(), down_sample.shape)
-        trigger[:, w_pos[0]:w_pos[0] + 3, w_pos[1]:w_pos[1] + 3, 0] = 1
-    else:
-        w_pos = [-1, -1]
+            current_trigger = triggers[i * j][batch * half_batch_size: (batch + 1) * half_batch_size]
+            for epoch in range(maxiter):
+                while validate_watermark(model, current_trigger, watermark_targets[j]) > threshold and step_list[batch] < 50:
+                    step_list[batch] += 1
+                    grad = sess.run(model.ce_trigger, {x: np.concatenate([current_trigger, current_trigger], 0), w: w_label,
+                                                    is_training: 0, is_augment: 0})[0]
+                    current_trigger = np.clip(current_trigger - w_lr * np.sign(grad[:half_batch_size]), 0, 1)
 
-    step_list = np.zeros([w_num_batch])
-    snnl_change = []
-    for batch in range(w_num_batch):
-        current_trigger = trigger[batch * half_batch_size: (batch + 1) * half_batch_size]
-        for epoch in range(maxiter):
-            while validate_watermark(model, current_trigger, watermark_target) > threshold and step_list[batch] < 50:
-                step_list[batch] += 1
-                grad = sess.run(model.ce_trigger, {x: np.concatenate([current_trigger, current_trigger], 0), w: w_label,
-                                                   is_training: 0, is_augment: 0})[0]
+                batch_data = np.concatenate([current_trigger,
+                                            target_data[batch * half_batch_size: (batch + 1) * half_batch_size]], 0)
+
+                grad = sess.run(model.snnl_trigger, {x: batch_data, w: w_label,
+                                                    t: temperatures,
+                                                    is_training: 0, is_augment: 0})[0]
+
+                current_trigger = np.clip(current_trigger + w_lr * np.sign(grad[:half_batch_size]), 0, 1)
+
+            for i in range(5):
+                grad = sess.run(model.ce_trigger,
+                                {x: np.concatenate([current_trigger, current_trigger], 0), w: w_label, is_training: 0,
+                                is_augment: 0})[0]
                 current_trigger = np.clip(current_trigger - w_lr * np.sign(grad[:half_batch_size]), 0, 1)
-
-            batch_data = np.concatenate([current_trigger,
-                                         target_data[batch * half_batch_size: (batch + 1) * half_batch_size]], 0)
-
-            grad = sess.run(model.snnl_trigger, {x: batch_data, w: w_label,
-                                                 t: temperatures,
-                                                 is_training: 0, is_augment: 0})[0]
-
-            current_trigger = np.clip(current_trigger + w_lr * np.sign(grad[:half_batch_size]), 0, 1)
-
-        for i in range(5):
-            grad = sess.run(model.ce_trigger,
-                            {x: np.concatenate([current_trigger, current_trigger], 0), w: w_label, is_training: 0,
-                             is_augment: 0})[0]
-            current_trigger = np.clip(current_trigger - w_lr * np.sign(grad[:half_batch_size]), 0, 1)
-        trigger[batch * half_batch_size: (batch + 1) * half_batch_size] = current_trigger
+            triggers[i * j][batch * half_batch_size: (batch + 1) * half_batch_size] = current_trigger
 
     for epoch in range(round((w_epochs * num_batch / w_num_batch))):
         if shuffle:
@@ -205,12 +218,13 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
                                           is_training: 1, is_augment: 1})
                 j += 1
                 normal += 1
-            batch_data = np.concatenate([trigger[batch * half_batch_size: (batch + 1) * half_batch_size],
-                                         target_data[batch * half_batch_size: (batch + 1) * half_batch_size]], 0)
+            for i in range(len(triggers)):
+                batch_data = np.concatenate([triggers[i][batch * half_batch_size: (batch + 1) * half_batch_size],
+                                            target_data[batch * half_batch_size: (batch + 1) * half_batch_size]], 0)
 
-            _, temp_grad = sess.run(model.optimize, {x: batch_data, y: trigger_label, w: w_label, t: temperatures,
-                                                     is_training: 1, is_augment: 0})
-            temperatures -= temp_lr * temp_grad[0]
+                _, temp_grad = sess.run(model.optimize, {x: batch_data, y: trigger_labels[i], w: w_label, t: temperatures,
+                                                        is_training: 1, is_augment: 0})
+                temperatures -= temp_lr * temp_grad[0]
 
     victim_error_list = []
     for batch in range(num_test):
@@ -219,14 +233,19 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
                                                         is_training: 0, is_augment: 0}))
     victim_error = np.average(victim_error_list)
 
-    victim_watermark_acc_list = []
-    for batch in range(w_num_batch):
-        victim_watermark_acc_list.append(validate_watermark(
-            model, trigger[batch * half_batch_size: (batch + 1) * half_batch_size], watermark_target))
-    victim_watermark_acc = np.average(victim_watermark_acc_list)
     if verbose:
-        print(f"Victim Model || validation accuracy: {1 - victim_error}, "
-              f"watermark success: {victim_watermark_acc}")
+        print(f"Victim Model || validation accuracy: {1 - victim_error}")
+
+    victim_watermark_acc = []
+    for i, watermark_source in enumerate(watermark_sources):
+        for j, watermark_target in enumerate(watermark_targets):
+            victim_watermark_acc_list = []
+            for batch in range(w_num_batch):
+                victim_watermark_acc_list.append(validate_watermark(
+                    model, triggers[i * j][batch * half_batch_size: (batch + 1) * half_batch_size], watermark_target))
+            victim_watermark_acc.append(np.average(victim_watermark_acc_list))
+            if verbose:
+                print(f"source: {watermark_source}, target: {watermark_target}, watermark success: {victim_watermark_acc[-1]}")
 
     # Attack
     extracted_label = []
@@ -275,14 +294,19 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
                                    is_training: 0, is_augment: 0}))
     extracted_error = np.average(extracted_error_list)
 
-    extracted_watermark_acc_list = []
-    for batch in range(w_num_batch):
-        extracted_watermark_acc_list.append(validate_watermark(
-            model, trigger[batch * half_batch_size: (batch + 1) * half_batch_size], watermark_target))
-    extracted_watermark_acc = np.average(extracted_watermark_acc_list)
     if verbose:
-        print(f"Extracted Model || validation accuracy: {1 - extracted_error},"
-              f" watermark success: {extracted_watermark_acc}")
+        print(f"Extracted Model || validation accuracy: {1 - extracted_error}")
+    
+    extracted_watermark_acc = []
+    for i, watermark_source in enumerate(watermark_sources):
+        for j, watermark_target in enumerate(watermark_targets):
+            extracted_watermark_acc_list = []
+            for batch in range(w_num_batch):
+                extracted_watermark_acc_list.append(validate_watermark(
+                    model, triggers[i * j][batch * half_batch_size: (batch + 1) * half_batch_size], watermark_target))
+            extracted_watermark_acc.append(np.average(extracted_watermark_acc_list))
+            if verbose:
+                print(f"source: {watermark_source}, target: {watermark_target}, watermark success: {extracted_watermark_acc[-1]}")
 
 
     # Clean model for comparison
@@ -323,19 +347,23 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
                                                           is_training: 0, is_augment: 0}))
     baseline_error = np.average(baseline_error_list)
 
-    baseline_list = []
-    for batch in range(w_num_batch):
-        baseline_list.append(validate_watermark(
-            model, trigger[batch * half_batch_size: (batch + 1) * half_batch_size], watermark_target))
-    baseline_watermark = np.average(baseline_list)
-
     if verbose:
-        print(f"Clean Model || validation accuracy: {1 - baseline_error}, "
-              f"watermark success: {baseline_watermark}")
+        print(f"Clean Model || validation accuracy: {1 - baseline_error}")
+
+    baseline_watermark_acc = []
+    for i, watermark_source in enumerate(watermark_sources):
+        for j, watermark_target in enumerate(watermark_targets):
+            baseline_watermark_acc_list = []
+            for batch in range(w_num_batch):
+                baseline_watermark_acc_list.append(validate_watermark(
+                    model, triggers[i * j][batch * half_batch_size: (batch + 1) * half_batch_size], watermark_target))
+            baseline_watermark_acc.append(np.average(baseline_watermark_acc_list))
+            if verbose:
+                print(f"source: {watermark_source}, target: {watermark_target}, watermark success: {baseline_watermark_acc[-1]}")
 
 
     return 1 - victim_error, victim_watermark_acc, 1 - extracted_error, extracted_watermark_acc, 1 - baseline_error, \
-           baseline_watermark
+           baseline_watermark_acc
 
 
 if __name__ == '__main__':
@@ -356,15 +384,16 @@ if __name__ == '__main__':
     parser.add_argument('--maxiter', help='iter of perturb watermarked data with respect to snnl', type=int, default=10)
     parser.add_argument('--w_lr', help='learning rate for perturbing watermarked data', type=float, default=0.01)
     parser.add_argument('--t_lr', help='learning rate for temperature', type=float, default=0.1)
-    parser.add_argument('--source', help='source class of watermark', type=int, default=1)
-    parser.add_argument('--target', help='target class of watermark', type=int, default=7)
+    parser.add_argument('--source', help='source class of watermark', nargs='+', default=[1])
+    parser.add_argument('--target', help='target class of watermark', nargs='+', default=[7])
     parser.add_argument('--shuffle', type=int, default=0)
     parser.add_argument('--seed', help='random seed', type=int, default=0)
     parser.add_argument('--verbose', type=int, default=1)
     parser.add_argument('--default', help='whether to use default hyperparameter, 0 or 1', type=int, default=1)
     parser.add_argument('--layers', help='number of layers, only useful if model is resnet', type=int, default=18)
     parser.add_argument('--distrib', help='use in or out of distribution watermark', type=str, default='out')
-
+    parser.add_argument('--outfile', help="appends the results to this file, creates it if it doesn't exist", type=str, default=None)
+    
     args = parser.parse_args()
     default = args.default
     batch_size = args.batch_size
@@ -388,6 +417,7 @@ if __name__ == '__main__':
     layers = args.layers
     metric = args.metric
     shuffle = args.shuffle
+    outfile = args.outfile
 
     # hyperparameters with reasonable performance
     if default:
@@ -403,8 +433,8 @@ if __name__ == '__main__':
             threshold = 0.1
             t_lr = 0.1
             w_lr = 0.01
-            source = 1
-            target = 7
+            source = [1]
+            target = [7]
             maxiter = 10
             distrib = "out"
         elif dataset == 'fashion':
@@ -418,8 +448,8 @@ if __name__ == '__main__':
                 t_lr = 0.1
                 threshold = 0.1
                 w_lr = 0.01
-                source = 8
-                target = 0
+                source = [8]
+                target = [0]
                 maxiter = 10
                 distrib = "out"
                 metric = "cosine"
@@ -434,8 +464,8 @@ if __name__ == '__main__':
                 t_lr = 0.1
                 threshold = 0.1
                 w_lr = 0.01
-                source = 9
-                target = 0
+                source = [9]
+                target = [0]
                 maxiter = 10
                 distrib = "out"
                 metric = "cosine"
@@ -452,8 +482,8 @@ if __name__ == '__main__':
             threshold = 0.1
             factors = [16, 16, 16]
             temperatures = [30, 30, 30]
-            source = 9
-            target = 5
+            source = [9]
+            target = [5]
         elif dataset == "cifar10":
             batch_size = 128
             model_type = "resnet"
@@ -466,8 +496,8 @@ if __name__ == '__main__':
             t_lr = 0.1
             threshold = 0.1
             w_lr = 0.01
-            source = 8
-            target = 0
+            source = [8]
+            target = [0]
             maxiter = 10
             distrib = "out"
             metric = "cosine"
@@ -483,8 +513,8 @@ if __name__ == '__main__':
             t_lr = 0.01
             threshold = 0.1
             w_lr = 0.01
-            source = 8
-            target = 0
+            source = [8]
+            target = [0]
             maxiter = 100
             distrib = "out"
             metric = "cosine"
@@ -532,3 +562,8 @@ if __name__ == '__main__':
     res = train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_epochs, lr, ratio, factors,
                 temperatures, source, target, batch_size, w_lr, threshold, maxiter, shuffle, t_lr, dataset, distrib,
                 verbose)
+    
+    if outfile is not None:
+        with open(outfile, 'a+') as f:
+            f.write("\n" + str(source) + "," + str(target) + "," + ",".join(res))
+    

@@ -1,0 +1,4 @@
+data/fashion_mnist/
+data/mnist/
+data/sd_GSCmdV2/
+__pycache__/

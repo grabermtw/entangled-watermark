@@ -5,8 +5,8 @@ import pickle
 # modified based on https://github.com/hsjeong5/MNIST-for-Numpy
 
 
-filename = [["training_images", "train-images-idx3-ubyte.gz"], ["test_images", "t10k-images-idx3-ubyte.gz"],
-            ["training_labels", "train-labels-idx1-ubyte.gz"], ["test_labels", "t10k-labels-idx1-ubyte.gz"]]
+filename = [["training_images", "fashion_mnist/train-images-idx3-ubyte.gz"], ["test_images", "fashion_mnist/t10k-images-idx3-ubyte.gz"],
+            ["training_labels", "fashion_mnist/train-labels-idx1-ubyte.gz"], ["test_labels", "fashion_mnist/t10k-labels-idx1-ubyte.gz"]]
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

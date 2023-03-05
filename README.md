@@ -1,4 +1,4 @@
-# Entangled Watermarks as a Defense against Model Extraction
+# Entangled Watermarks as a Defense against Model Extraction (with _m_-to-_n_ entanglement)
 
 This repository is an implementation of the paper [Entangled Watermarks as a Defense against Model Extraction](https://arxiv.org/abs/2002.12200),	published in 30th USENIX Security Symposium. In this repository, we show how to train a watermarked DNN model that is robust against model extraction. The high-level idea is that a special watermark is designed such that it could be used to verify the owenrship of the model if it is stolen by model extraction. For more details, please read the paper.
 
