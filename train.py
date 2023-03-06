@@ -101,7 +101,7 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
             trigger_labels[-1][:, watermark_target] = 1
 
     num_batch = x_train.shape[0] // batch_size
-    w_num_batch = target_data.shape[0] // batch_size * 2
+    w_num_batch = target_datas[0].shape[0] // batch_size * 2
     num_test = x_test.shape[0] // batch_size
 
     # Maybe need to modify this part for m-to-n???
@@ -164,32 +164,32 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
             else:
                 w_pos = [-1, -1]
 
-        step_list = np.zeros([w_num_batch])
-        snnl_change = []
-        for batch in range(w_num_batch):
-            current_trigger = triggers[i * j][batch * half_batch_size: (batch + 1) * half_batch_size]
-            for epoch in range(maxiter):
-                while validate_watermark(model, current_trigger, watermark_targets[j]) > threshold and step_list[batch] < 50:
-                    step_list[batch] += 1
-                    grad = sess.run(model.ce_trigger, {x: np.concatenate([current_trigger, current_trigger], 0), w: w_label,
-                                                    is_training: 0, is_augment: 0})[0]
+            step_list = np.zeros([w_num_batch])
+            snnl_change = []
+            for batch in range(w_num_batch):
+                current_trigger = triggers[i * j][batch * half_batch_size: (batch + 1) * half_batch_size]
+                for epoch in range(maxiter):
+                    while validate_watermark(model, current_trigger, watermark_targets[j]) > threshold and step_list[batch] < 50:
+                        step_list[batch] += 1
+                        grad = sess.run(model.ce_trigger, {x: np.concatenate([current_trigger, current_trigger], 0), w: w_label,
+                                                        is_training: 0, is_augment: 0})[0]
+                        current_trigger = np.clip(current_trigger - w_lr * np.sign(grad[:half_batch_size]), 0, 1)
+
+                    batch_data = np.concatenate([current_trigger,
+                                                target_data[batch * half_batch_size: (batch + 1) * half_batch_size]], 0)
+
+                    grad = sess.run(model.snnl_trigger, {x: batch_data, w: w_label,
+                                                        t: temperatures,
+                                                        is_training: 0, is_augment: 0})[0]
+
+                    current_trigger = np.clip(current_trigger + w_lr * np.sign(grad[:half_batch_size]), 0, 1)
+
+                for k in range(5):
+                    grad = sess.run(model.ce_trigger,
+                                    {x: np.concatenate([current_trigger, current_trigger], 0), w: w_label, is_training: 0,
+                                    is_augment: 0})[0]
                     current_trigger = np.clip(current_trigger - w_lr * np.sign(grad[:half_batch_size]), 0, 1)
-
-                batch_data = np.concatenate([current_trigger,
-                                            target_data[batch * half_batch_size: (batch + 1) * half_batch_size]], 0)
-
-                grad = sess.run(model.snnl_trigger, {x: batch_data, w: w_label,
-                                                    t: temperatures,
-                                                    is_training: 0, is_augment: 0})[0]
-
-                current_trigger = np.clip(current_trigger + w_lr * np.sign(grad[:half_batch_size]), 0, 1)
-
-            for i in range(5):
-                grad = sess.run(model.ce_trigger,
-                                {x: np.concatenate([current_trigger, current_trigger], 0), w: w_label, is_training: 0,
-                                is_augment: 0})[0]
-                current_trigger = np.clip(current_trigger - w_lr * np.sign(grad[:half_batch_size]), 0, 1)
-            triggers[i * j][batch * half_batch_size: (batch + 1) * half_batch_size] = current_trigger
+                triggers[i * j][batch * half_batch_size: (batch + 1) * half_batch_size] = current_trigger
 
     for epoch in range(round((w_epochs * num_batch / w_num_batch))):
         if shuffle:
@@ -393,7 +393,7 @@ if __name__ == '__main__':
     parser.add_argument('--layers', help='number of layers, only useful if model is resnet', type=int, default=18)
     parser.add_argument('--distrib', help='use in or out of distribution watermark', type=str, default='out')
     parser.add_argument('--outfile', help="appends the results to this file, creates it if it doesn't exist", type=str, default=None)
-    
+
     args = parser.parse_args()
     default = args.default
     batch_size = args.batch_size
@@ -406,8 +406,8 @@ if __name__ == '__main__':
     threshold = args.threshold
     w_lr = args.w_lr
     t_lr = args.t_lr
-    source = args.source
-    target = args.target
+    source = list(int(x) for x in args.source)
+    target = list(int(x) for x in args.target)
     seed = args.seed
     verbose = args.verbose
     dataset = args.dataset
@@ -433,8 +433,8 @@ if __name__ == '__main__':
             threshold = 0.1
             t_lr = 0.1
             w_lr = 0.01
-            source = [1]
-            target = [7]
+            #source = [1]
+            #target = [1, 2]
             maxiter = 10
             distrib = "out"
         elif dataset == 'fashion':
@@ -448,8 +448,8 @@ if __name__ == '__main__':
                 t_lr = 0.1
                 threshold = 0.1
                 w_lr = 0.01
-                source = [8]
-                target = [0]
+                #source = [8]
+                #target = [0]
                 maxiter = 10
                 distrib = "out"
                 metric = "cosine"
@@ -464,8 +464,8 @@ if __name__ == '__main__':
                 t_lr = 0.1
                 threshold = 0.1
                 w_lr = 0.01
-                source = [9]
-                target = [0]
+                #source = [9]
+                #target = [0]
                 maxiter = 10
                 distrib = "out"
                 metric = "cosine"
@@ -482,8 +482,8 @@ if __name__ == '__main__':
             threshold = 0.1
             factors = [16, 16, 16]
             temperatures = [30, 30, 30]
-            source = [9]
-            target = [5]
+            #source = [9]
+            #target = [5]
         elif dataset == "cifar10":
             batch_size = 128
             model_type = "resnet"
@@ -496,8 +496,8 @@ if __name__ == '__main__':
             t_lr = 0.1
             threshold = 0.1
             w_lr = 0.01
-            source = [8]
-            target = [0]
+            #source = [8]
+            #target = [0]
             maxiter = 10
             distrib = "out"
             metric = "cosine"
@@ -513,8 +513,8 @@ if __name__ == '__main__':
             t_lr = 0.01
             threshold = 0.1
             w_lr = 0.01
-            source = [8]
-            target = [0]
+            #source = [8]
+            #target = [0]
             maxiter = 100
             distrib = "out"
             metric = "cosine"
@@ -565,5 +565,5 @@ if __name__ == '__main__':
     
     if outfile is not None:
         with open(outfile, 'a+') as f:
-            f.write("\n" + str(source) + "," + str(target) + "," + ",".join(res))
+            f.write("\n" + str(source) + "," + str(target) + "," + ",".join(str(x) for x in res))
     

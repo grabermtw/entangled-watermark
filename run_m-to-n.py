@@ -22,7 +22,7 @@ for dataset, num_class in datasets:
                         f.write("Sources,Targets,Victim Accuracy,Victim WM Success Rate,Extracted Accuracy,Extracted WM Success Rate,Baseline Accuracy,Baseline WM Success Rate")
                 for m_combo in m_combos:
                     for n_combo in n_combos:
-                        cmd = "python3 train.py --dataset {0} --source {1} --target {2} --outfile {3}".format(dataset, list(m_combo), list(n_combo), outfile)
+                        cmd = "python3 train.py --dataset {0} --source {1} --target {2} --outfile {3}".format(dataset, ' '.join(str(x) for x in m_combo), ' '.join(str(x) for x in n_combo), outfile)
                         print("Running command:", cmd)
                         subprocess.run(cmd, shell=True)
                     
