@@ -104,14 +104,13 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
     w_num_batch = target_datas[0].shape[0] // batch_size * 2
     num_test = x_test.shape[0] // batch_size
 
-    # Maybe need to modify this part for m-to-n???
     def validate_watermark(model_name, trigger_set, label):
         labels = np.zeros([batch_size, num_class])
         labels[:, label] = 1
         if trigger_set.shape[0] < batch_size:
             trigger_data = np.concatenate([trigger_set, trigger_set], 0)[:batch_size]
         else:
-            trigger_data = trigger_set
+            trigger_data = trigger_set[:batch_size]
         error = sess.run(model_name.error, {x: trigger_data, y: labels, is_training: 0, is_augment: 0})
         return 1 - error
 
@@ -152,7 +151,7 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
             if distribution == "in":
                 trigger_grad = []
                 for batch in range(w_num_batch):
-                    batch_data = np.concatenate([triggers[i * j][batch * half_batch_size: (batch + 1) * half_batch_size],
+                    batch_data = np.concatenate([triggers[i * len(source_datas) + j][batch * half_batch_size: (batch + 1) * half_batch_size],
                                                 target_data[batch * half_batch_size: (batch + 1) * half_batch_size]], 0)
                     grad = sess.run(model.snnl_trigger, {x: batch_data, w: w_label, t: temperatures, is_training: 0,
                                                         is_augment: 0})[0][:half_batch_size]
@@ -160,23 +159,24 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
                 avg_grad = np.average(np.concatenate(trigger_grad), 0)
                 down_sample = np.array([[np.sum(avg_grad[i: i + 3, k: k + 3]) for i in range(height - 2)] for k in range(width - 2)])
                 w_pos = np.unravel_index(down_sample.argmin(), down_sample.shape)
-                triggers[i * j][:, w_pos[0]:w_pos[0] + 3, w_pos[1]:w_pos[1] + 3, 0] = 1
+                triggers[i * len(source_datas) + j][:, w_pos[0]:w_pos[0] + 3, w_pos[1]:w_pos[1] + 3, 0] = 1
             else:
                 w_pos = [-1, -1]
 
             step_list = np.zeros([w_num_batch])
             snnl_change = []
             for batch in range(w_num_batch):
-                current_trigger = triggers[i * j][batch * half_batch_size: (batch + 1) * half_batch_size]
+                current_trigger = triggers[i * len(source_datas) + j][batch * half_batch_size: (batch + 1) * half_batch_size]
                 for epoch in range(maxiter):
                     while validate_watermark(model, current_trigger, watermark_targets[j]) > threshold and step_list[batch] < 50:
                         step_list[batch] += 1
-                        grad = sess.run(model.ce_trigger, {x: np.concatenate([current_trigger, current_trigger], 0), w: w_label,
+                        grad = sess.run(model.ce_trigger, {x: np.concatenate([current_trigger, current_trigger], 0)[:batch_size], w: w_label,
                                                         is_training: 0, is_augment: 0})[0]
                         current_trigger = np.clip(current_trigger - w_lr * np.sign(grad[:half_batch_size]), 0, 1)
 
-                    batch_data = np.concatenate([current_trigger,
+                    batch_data = np.concatenate([np.concatenate([current_trigger, current_trigger], 0)[:batch_size],
                                                 target_data[batch * half_batch_size: (batch + 1) * half_batch_size]], 0)
+                    batch_data = batch_data[batch_data.shape[0] - batch_size:]
 
                     grad = sess.run(model.snnl_trigger, {x: batch_data, w: w_label,
                                                         t: temperatures,
@@ -186,10 +186,10 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
 
                 for k in range(5):
                     grad = sess.run(model.ce_trigger,
-                                    {x: np.concatenate([current_trigger, current_trigger], 0), w: w_label, is_training: 0,
+                                    {x: np.concatenate([current_trigger, current_trigger], 0)[:batch_size], w: w_label, is_training: 0,
                                     is_augment: 0})[0]
                     current_trigger = np.clip(current_trigger - w_lr * np.sign(grad[:half_batch_size]), 0, 1)
-                triggers[i * j][batch * half_batch_size: (batch + 1) * half_batch_size] = current_trigger
+                triggers[i * len(source_datas) + j][batch * half_batch_size: (batch + 1) * half_batch_size] = current_trigger
 
     for epoch in range(round((w_epochs * num_batch / w_num_batch))):
         if shuffle:
@@ -219,9 +219,15 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
                 j += 1
                 normal += 1
             for i in range(len(triggers)):
-                batch_data = np.concatenate([triggers[i][batch * half_batch_size: (batch + 1) * half_batch_size],
-                                            target_data[batch * half_batch_size: (batch + 1) * half_batch_size]], 0)
+                batch_trigger = triggers[i][batch * half_batch_size: (batch + 1) * half_batch_size]
+                while batch_trigger.shape[0] < batch_size:
+                    batch_trigger = np.concatenate([batch_trigger, triggers[i][batch * half_batch_size: (batch + 1) * half_batch_size]], 0)
+                    if batch_trigger.shape[0] == 0:
+                        exit(1)
 
+                batch_data = np.concatenate([batch_trigger,
+                                            target_data[batch * half_batch_size: (batch + 1) * half_batch_size]], 0)
+                batch_data = batch_data[batch_data.shape[0] - batch_size:]
                 _, temp_grad = sess.run(model.optimize, {x: batch_data, y: trigger_labels[i], w: w_label, t: temperatures,
                                                         is_training: 1, is_augment: 0})
                 temperatures -= temp_lr * temp_grad[0]
@@ -242,7 +248,7 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
             victim_watermark_acc_list = []
             for batch in range(w_num_batch):
                 victim_watermark_acc_list.append(validate_watermark(
-                    model, triggers[i * j][batch * half_batch_size: (batch + 1) * half_batch_size], watermark_target))
+                    model, triggers[i * len(watermark_sources) + j][batch * half_batch_size: (batch + 1) * half_batch_size], watermark_target))
             victim_watermark_acc.append(np.average(victim_watermark_acc_list))
             if verbose:
                 print(f"source: {watermark_source}, target: {watermark_target}, watermark success: {victim_watermark_acc[-1]}")
@@ -282,7 +288,8 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
             x_train = x_train[index]
             y_train = y_train[index]
         for batch in range(num_batch):
-            sess.run(model.optimize, {x: extracted_data[batch * batch_size: (batch + 1) * batch_size],
+            sess.run(model.optimize, {x: np.concatenate([extracted_data[batch * batch_size: (batch + 1) * batch_size],
+                                                         extracted_data[batch * batch_size: (batch + 1) * batch_size]], 0)[:batch_size],
                                       y: extracted_label[batch * batch_size: (batch + 1) * batch_size],
                                       is_training: 1, is_augment: 1})
 
@@ -303,7 +310,7 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
             extracted_watermark_acc_list = []
             for batch in range(w_num_batch):
                 extracted_watermark_acc_list.append(validate_watermark(
-                    model, triggers[i * j][batch * half_batch_size: (batch + 1) * half_batch_size], watermark_target))
+                    model, triggers[i * len(watermark_sources) + j][batch * half_batch_size: (batch + 1) * half_batch_size], watermark_target))
             extracted_watermark_acc.append(np.average(extracted_watermark_acc_list))
             if verbose:
                 print(f"source: {watermark_source}, target: {watermark_target}, watermark success: {extracted_watermark_acc[-1]}")
@@ -356,7 +363,7 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
             baseline_watermark_acc_list = []
             for batch in range(w_num_batch):
                 baseline_watermark_acc_list.append(validate_watermark(
-                    model, triggers[i * j][batch * half_batch_size: (batch + 1) * half_batch_size], watermark_target))
+                    model, triggers[i * len(watermark_sources) * j][batch * half_batch_size: (batch + 1) * half_batch_size], watermark_target))
             baseline_watermark_acc.append(np.average(baseline_watermark_acc_list))
             if verbose:
                 print(f"source: {watermark_source}, target: {watermark_target}, watermark success: {baseline_watermark_acc[-1]}")
