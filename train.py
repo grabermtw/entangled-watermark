@@ -168,7 +168,6 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
             step_list = np.zeros([w_num_batch])
             snnl_change = []
             for batch in range(w_num_batch):
-                print("triggers len", len(triggers), "i * len(source_datas) + j =", str(i * len(source_datas) + j))
                 current_trigger = triggers[i * (len(source_datas) - 1) + j][batch * half_batch_size: (batch + 1) * half_batch_size]
                 for epoch in range(maxiter):
                     while validate_watermark(model, current_trigger, watermark_targets[j]) > threshold and step_list[batch] < 50:
