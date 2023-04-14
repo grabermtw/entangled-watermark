@@ -153,7 +153,7 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
             if distribution == "in":
                 trigger_grad = []
                 for batch in range(w_num_batch):
-                    batch_data = np.concatenate([triggers[i * len(source_datas) + j][batch * half_batch_size: (batch + 1) * half_batch_size],
+                    batch_data = np.concatenate([triggers[i * (len(source_datas) - 1) + j][batch * half_batch_size: (batch + 1) * half_batch_size],
                                                 target_data[batch * half_batch_size: (batch + 1) * half_batch_size]], 0)
                     grad = sess.run(model.snnl_trigger, {x: batch_data, w: w_label, t: temperatures, is_training: 0,
                                                         is_augment: 0})[0][:half_batch_size]
@@ -161,7 +161,7 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
                 avg_grad = np.average(np.concatenate(trigger_grad), 0)
                 down_sample = np.array([[np.sum(avg_grad[i: i + 3, k: k + 3]) for i in range(height - 2)] for k in range(width - 2)])
                 w_pos = np.unravel_index(down_sample.argmin(), down_sample.shape)
-                triggers[i * len(source_datas) + j][:, w_pos[0]:w_pos[0] + 3, w_pos[1]:w_pos[1] + 3, 0] = 1
+                triggers[i * (len(source_datas) - 1) + j][:, w_pos[0]:w_pos[0] + 3, w_pos[1]:w_pos[1] + 3, 0] = 1
             else:
                 w_pos = [-1, -1]
 
@@ -169,7 +169,7 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
             snnl_change = []
             for batch in range(w_num_batch):
                 print("triggers len", len(triggers), "i * len(source_datas) + j =", str(i * len(source_datas) + j))
-                current_trigger = triggers[i * len(source_datas) + j][batch * half_batch_size: (batch + 1) * half_batch_size]
+                current_trigger = triggers[i * (len(source_datas) - 1) + j][batch * half_batch_size: (batch + 1) * half_batch_size]
                 for epoch in range(maxiter):
                     while validate_watermark(model, current_trigger, watermark_targets[j]) > threshold and step_list[batch] < 50:
                         step_list[batch] += 1
@@ -194,7 +194,7 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
                                     {x: np.concatenate([current_trigger, current_trigger], 0)[:batch_size], w: w_label, is_training: 0,
                                     is_augment: 0})[0]
                     current_trigger = np.clip(current_trigger - w_lr * np.sign(grad[:half_batch_size]), 0, 1)
-                triggers[i * len(source_datas) + j][batch * half_batch_size: (batch + 1) * half_batch_size] = current_trigger
+                triggers[i * (len(source_datas) - 1) + j][batch * half_batch_size: (batch + 1) * half_batch_size] = current_trigger
 
     for epoch in range(round((w_epochs * num_batch / w_num_batch))):
         if shuffle:
@@ -253,7 +253,7 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
             victim_watermark_acc_list = []
             for batch in range(w_num_batch):
                 victim_watermark_acc_list.append(validate_watermark(
-                    model, triggers[i * len(watermark_sources) + j][batch * half_batch_size: (batch + 1) * half_batch_size], watermark_target))
+                    model, triggers[i * (len(watermark_sources) - 1) + j][batch * half_batch_size: (batch + 1) * half_batch_size], watermark_target))
             victim_watermark_acc.append(np.average(victim_watermark_acc_list))
             if verbose:
                 print(f"source: {watermark_source}, target: {watermark_target}, watermark success: {victim_watermark_acc[-1]}")
@@ -315,7 +315,7 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
             extracted_watermark_acc_list = []
             for batch in range(w_num_batch):
                 extracted_watermark_acc_list.append(validate_watermark(
-                    model, triggers[i * len(watermark_sources) + j][batch * half_batch_size: (batch + 1) * half_batch_size], watermark_target))
+                    model, triggers[i * (len(watermark_sources) - 1) + j][batch * half_batch_size: (batch + 1) * half_batch_size], watermark_target))
             extracted_watermark_acc.append(np.average(extracted_watermark_acc_list))
             if verbose:
                 print(f"source: {watermark_source}, target: {watermark_target}, watermark success: {extracted_watermark_acc[-1]}")
@@ -368,7 +368,7 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
             baseline_watermark_acc_list = []
             for batch in range(w_num_batch):
                 baseline_watermark_acc_list.append(validate_watermark(
-                    model, triggers[i * len(watermark_sources) * j][batch * half_batch_size: (batch + 1) * half_batch_size], watermark_target))
+                    model, triggers[i * (len(watermark_sources) - 1) * j][batch * half_batch_size: (batch + 1) * half_batch_size], watermark_target))
             baseline_watermark_acc.append(np.average(baseline_watermark_acc_list))
             if verbose:
                 print(f"source: {watermark_source}, target: {watermark_target}, watermark success: {baseline_watermark_acc[-1]}")
