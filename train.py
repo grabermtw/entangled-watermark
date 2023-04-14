@@ -88,6 +88,9 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
         for target_data in target_datas:
             triggers.append(np.concatenate([source_data] * (target_data.shape[0] // source_data.shape[0] + 1), 0)[
                           :target_data.shape[0]])
+            # maintain proper shape
+            while triggers[-1].shape[0] < batch_size:
+                triggers[-1] = np.concatenate([triggers[-1], triggers[-1]], 0)[:batch_size]
 
     w_label = np.concatenate([np.ones(half_batch_size), np.zeros(half_batch_size)], 0)
     y_train = tf.keras.utils.to_categorical(y_train, num_class)
@@ -177,11 +180,7 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
                                                 target_data[batch * half_batch_size: (batch + 1) * half_batch_size]], 0)
                     batch_data = batch_data[batch_data.shape[0] - batch_size:]
 
-                    while batch_data.shape[0] < batch_size:
-                        batch_data = np.concatenate([batch_data, triggers[i][batch * half_batch_size: (batch + 1) * half_batch_size]], 0)
-                        if batch_data.shape[0] == 0:
-                            exit(1)
-
+                                        
                     grad = sess.run(model.snnl_trigger, {x: batch_data, w: w_label,
                                                         t: temperatures,
                                                         is_training: 0, is_augment: 0})[0]
