@@ -179,6 +179,8 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
 
                     batch_data = np.concatenate([np.concatenate([current_trigger, current_trigger], 0)[:batch_size],
                                                 target_data[batch * half_batch_size: (batch + 1) * half_batch_size]], 0)
+                    while batch_data.shape[0] < batch_size:
+                        batch_data = np.concatenate([batch_data, batch_data], 0)
                     batch_data = batch_data[:batch_size]
                                         
                     grad = sess.run(model.snnl_trigger, {x: batch_data, w: w_label,
