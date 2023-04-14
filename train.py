@@ -168,6 +168,7 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
             step_list = np.zeros([w_num_batch])
             snnl_change = []
             for batch in range(w_num_batch):
+                print("triggers len", len(triggers), "i * len(source_datas) + j =", str(i * len(source_datas) + j))
                 current_trigger = triggers[i * len(source_datas) + j][batch * half_batch_size: (batch + 1) * half_batch_size]
                 for epoch in range(maxiter):
                     while validate_watermark(model, current_trigger, watermark_targets[j]) > threshold and step_list[batch] < 50:
@@ -178,8 +179,7 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
 
                     batch_data = np.concatenate([np.concatenate([current_trigger, current_trigger], 0)[:batch_size],
                                                 target_data[batch * half_batch_size: (batch + 1) * half_batch_size]], 0)
-                    batch_data = batch_data[batch_data.shape[0] - batch_size:]
-
+                    batch_data = batch_data[:batch_size]
                                         
                     grad = sess.run(model.snnl_trigger, {x: batch_data, w: w_label,
                                                         t: temperatures,
