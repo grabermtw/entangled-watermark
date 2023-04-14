@@ -107,10 +107,9 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
     def validate_watermark(model_name, trigger_set, label):
         labels = np.zeros([batch_size, num_class])
         labels[:, label] = 1
-        if trigger_set.shape[0] < batch_size:
-            trigger_data = np.concatenate([trigger_set, trigger_set], 0)[:batch_size]
-        else:
-            trigger_data = trigger_set[:batch_size]
+        trigger_data = trigger_set[:batch_size]
+        while trigger_data.shape[0] < batch_size:
+            trigger_data = np.concatenate([trigger_data, trigger_set], 0)[:batch_size]
         error = sess.run(model_name.error, {x: trigger_data, y: labels, is_training: 0, is_augment: 0})
         return 1 - error
 
@@ -398,7 +397,7 @@ if __name__ == '__main__':
     parser.add_argument('--verbose', type=int, default=1)
     parser.add_argument('--default', help='whether to use default hyperparameter, 0 or 1', type=int, default=1)
     parser.add_argument('--layers', help='number of layers, only useful if model is resnet', type=int, default=18)
-    parser.add_argument('--distrib', help='use in or out of distribution watermark', type=str, default='out')
+    parser.add_argument('--distrib', help='use in or out of distribution watermark', type=str, default='in')
     parser.add_argument('--outfile', help="appends the results to this file, creates it if it doesn't exist", type=str, default=None)
 
     args = parser.parse_args()
