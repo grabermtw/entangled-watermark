@@ -177,6 +177,11 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
                                                 target_data[batch * half_batch_size: (batch + 1) * half_batch_size]], 0)
                     batch_data = batch_data[batch_data.shape[0] - batch_size:]
 
+                    while batch_data.shape[0] < batch_size:
+                        batch_data = np.concatenate([batch_data, triggers[i][batch * half_batch_size: (batch + 1) * half_batch_size]], 0)
+                        if batch_data.shape[0] == 0:
+                            exit(1)
+
                     grad = sess.run(model.snnl_trigger, {x: batch_data, w: w_label,
                                                         t: temperatures,
                                                         is_training: 0, is_augment: 0})[0]
