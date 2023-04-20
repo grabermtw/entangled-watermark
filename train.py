@@ -367,7 +367,7 @@ def train(x_train, y_train, x_test, y_test, ewe_model, plain_model, epochs, w_ep
             baseline_watermark_acc_list = []
             for batch in range(w_num_batch):
                 baseline_watermark_acc_list.append(validate_watermark(
-                    model, triggers[i * len(watermark_targets) * j][batch * half_batch_size: (batch + 1) * half_batch_size], watermark_target))
+                    model, triggers[i * len(watermark_targets) + j][batch * half_batch_size: (batch + 1) * half_batch_size], watermark_target))
             baseline_watermark_acc.append(np.average(baseline_watermark_acc_list))
             if verbose:
                 print(f"source: {watermark_source}, target: {watermark_target}, watermark success: {baseline_watermark_acc[-1]}")
